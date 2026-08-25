@@ -1,6 +1,9 @@
 import joblib
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 import streamlit as st
+
 
 # CSS
 st.markdown("""
@@ -108,10 +111,12 @@ def load_dashboard_data():
     model_results = pd.read_csv("model_results.csv")
     rf_results = pd.read_csv("rf_overfitting_results.csv")
     loss_risk = pd.read_csv("validation_loss_risk.csv")
+    importance_df = pd.read_csv("permutation_importance.csv")
 
-    return model_results, rf_results, loss_risk
 
-model_results, rf_results, loss_risk = load_dashboard_data()
+    return model_results, rf_results, loss_risk, importance_df
+
+model_results, rf_results, loss_risk, importance_df = load_dashboard_data()
 
 
 # 범주형 변수 목록
@@ -141,8 +146,7 @@ category_options = {
 }
 
 
-# 사용자 입력 폼 =============================================================
-
+# 사용자 입력 폼 ============================================================
 simulator_tab, dashboard_tab = st.tabs(
     [
         "예약 취소 위험 시뮬레이터",
@@ -439,18 +443,307 @@ with simulator_tab:
                         )
 
 with dashboard_tab:
+
     st.subheader("모델 인사이트 대시보드")
-    st.caption("모델 성능 비교, 주요 변수, 손실 위험등급 검증 결과를 확인할 수 있습니다.")
-    
+
+    st.caption(
+        "모델 성능, 주요 예측 변수와 손실 위험등급의 검증 결과를 확인할 수 있습니다."
+    )
+
+    # 핵심 KPI
+
+    final_result = rf_results[
+        rf_results["Model"] == "Random Forest - Moderate Final"
+    ].iloc[0]
+
     kpi1, kpi2, kpi3 = st.columns(3)
 
     with kpi1:
-        st.metric(label="최고 Test ROC-AUC", value="0.9481")
+        with st.container(border=True):
+            st.metric(
+                "최종 모델 ROC-AUC",
+                f"{final_result['Test ROC-AUC']:.4f}"
+            )
+            st.caption("취소 위험 구분 성능")
 
     with kpi2:
-        st.metric(label="예측 정확도", value="0.7573")
+        with st.container(border=True):
+            st.metric(
+                "예측 정확도",
+                f"{final_result['Test Accuracy']:.2%}"
+            )
+            st.caption("전체 예약 분류 정확도")
 
     with kpi3:
-        st.metric(label="위험군 실제 취소율", value="74.5%")
-        
+        with st.container(border=True):
+            st.metric(
+                "HIGH 위험군 실제 취소율",
+                "74.5%"
+            )
+            st.caption("검증 데이터 기준")
 
+    st.write("")
+
+    # 모델 성능 + Permutation Importance
+    performance_col, importance_col = st.columns(
+        [1.15, 1],
+        gap="large"
+    )
+
+    # 모델 성능
+    with performance_col:
+        with st.container(border=True):
+
+            st.markdown("#### 모델 성능 비교")
+            st.caption(
+                "Random Forest 후보 모델의 테스트 성능을 비교합니다."
+            )
+
+            model_chart = rf_results[
+                [
+                    "Model",
+                    "Test ROC-AUC",
+                    "Precision",
+                    "Recall",
+                    "F1 Score"
+                ]
+            ].copy()
+
+            # 화면용 모델명 단축
+            model_chart["Model"] = model_chart["Model"].replace({
+                "Random Forest - Baseline": "Baseline",
+                "Random Forest - Broad RandomizedSearchCV": "Broad Search",
+                "Random Forest - Regularized Search": "Regularized",
+                "Random Forest - Moderate Final": "Moderate Final"
+            })
+
+            metrics = [
+                "Test ROC-AUC",
+                "Precision",
+                "Recall",
+                "F1 Score"
+            ]
+
+            x = range(len(model_chart))
+
+            fig, ax = plt.subplots(figsize=(9, 5))
+
+            width = 0.18
+
+            for i, metric in enumerate(metrics):
+                positions = [
+                    value + (i - 1.5) * width
+                    for value in x
+                ]
+
+                ax.bar(
+                    positions,
+                    model_chart[metric],
+                    width=width,
+                    label=metric
+                )
+
+            ax.set_xticks(list(x))
+            ax.set_xticklabels(
+                model_chart["Model"],
+                rotation=0
+            )
+
+            ax.set_ylim(0, 1)
+
+            ax.set_ylabel("Score")
+            ax.set_xlabel("")
+            ax.legend(
+                loc="lower center",
+                bbox_to_anchor=(0.5, -0.27),
+                ncol=2
+            )
+
+            ax.grid(
+                axis="y",
+                alpha=0.2
+            )
+
+            plt.tight_layout()
+
+            st.pyplot(fig)
+
+            plt.close(fig)
+
+
+    # Permutation Importance
+    with importance_col:
+        with st.container(border=True):
+
+            st.markdown("#### 취소 예측 주요 변수")
+            st.caption(
+                "Permutation Importance 기준 상위 10개 변수"
+            )
+
+            top_importance = (
+                importance_df
+                .sort_values(
+                    "Importance",
+                    ascending=False
+                )
+                .head(10)
+                .sort_values(
+                    "Importance",
+                    ascending=True
+                )
+            )
+
+            fig, ax = plt.subplots(figsize=(8, 5))
+
+            ax.barh(
+                top_importance["Feature"],
+                top_importance["Importance"]
+            )
+
+            ax.set_xlabel("Permutation Importance")
+            ax.set_ylabel("")
+
+            ax.grid(
+                axis="x",
+                alpha=0.2
+            )
+
+            plt.tight_layout()
+
+            st.pyplot(fig)
+
+            plt.close(fig)
+
+    st.write("")
+
+    # 손실 위험등급 검증
+    st.markdown("### 손실 위험등급 검증")
+    st.caption(
+        "예상 손실 지표를 기준으로 분류한 위험등급과 실제 취소 결과를 비교합니다."
+    )
+
+    risk_cancel_col, risk_loss_col = st.columns(
+        2,
+        gap="large"
+    )
+
+    # 실제 취소율
+    with risk_cancel_col:
+        with st.container(border=True):
+
+            st.markdown("#### 위험등급별 실제 취소율")
+
+            risk_cancel_df = pd.DataFrame({
+                "위험등급": [
+                    "LOW",
+                    "MEDIUM",
+                    "HIGH"
+                ],
+                "실제 취소율": [
+                    10.3,
+                    53.8,
+                    74.5
+                ]
+            })
+
+            fig, ax = plt.subplots(figsize=(7, 4))
+
+            bars = ax.bar(
+                risk_cancel_df["위험등급"],
+                risk_cancel_df["실제 취소율"]
+            )
+
+            ax.set_ylim(0, 100)
+            ax.set_ylabel("실제 취소율 (%)")
+
+            for bar, value in zip(
+                bars,
+                risk_cancel_df["실제 취소율"]
+            ):
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    value + 2,
+                    f"{value:.1f}%",
+                    ha="center"
+                )
+
+            ax.grid(
+                axis="y",
+                alpha=0.2
+            )
+
+            plt.tight_layout()
+
+            st.pyplot(fig)
+
+            plt.close(fig)
+
+
+    # 평균 예상 손실
+    with risk_loss_col:
+
+        with st.container(border=True):
+
+            st.markdown("#### 위험등급별 평균 예상 손실")
+
+            risk_loss_df = pd.DataFrame({
+                "위험등급": [
+                    "LOW",
+                    "MEDIUM",
+                    "HIGH"
+                ],
+                "평균 예상 손실": [
+                    22.269,
+                    124.273,
+                    387.696
+                ]
+            })
+
+            fig, ax = plt.subplots(figsize=(7, 4))
+
+            bars = ax.bar(
+                risk_loss_df["위험등급"],
+                risk_loss_df["평균 예상 손실"]
+            )
+
+            ax.set_ylabel("평균 예상 손실 지표")
+
+            for bar, value in zip(
+                bars,
+                risk_loss_df["평균 예상 손실"]
+            ):
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    value + 8,
+                    f"{value:.1f}",
+                    ha="center"
+                )
+
+            ax.grid(
+                axis="y",
+                alpha=0.2
+            )
+
+            plt.tight_layout()
+
+            st.pyplot(fig)
+
+            plt.close(fig)
+
+    st.write("")
+
+    # 모델 상세 성능
+    with st.container(border=True):
+
+        st.markdown("#### 모델 상세 성능")
+
+        st.caption(
+            "Accuracy, Precision, Recall, F1, ROC-AUC를 "
+            "후보 모델별로 비교합니다."
+        )
+
+        st.dataframe(
+            rf_results.round(4),
+            use_container_width=True,
+            hide_index=True
+        )
