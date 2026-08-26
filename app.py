@@ -1,9 +1,24 @@
+import os
 import joblib
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
 
+# 로컬 Windows와 Streamlit Linux 배포 환경 모두 대응
+if os.name == "nt":
+    plt.rcParams["font.family"] = "Malgun Gothic"
+else:
+    font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+
+    font_manager.fontManager.addfont(font_path)
+    font_name = font_manager.FontProperties(
+        fname=font_path
+    ).get_name()
+
+    plt.rcParams["font.family"] = font_name
+
+plt.rcParams["axes.unicode_minus"] = False
 
 # CSS
 st.markdown("""
