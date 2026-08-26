@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
+from matplotlib import font_manager
 
 # 로컬 Windows와 Streamlit Linux 배포 환경 모두 대응
 if os.name == "nt":
