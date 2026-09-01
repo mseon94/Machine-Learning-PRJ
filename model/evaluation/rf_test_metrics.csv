@@ -1,0 +1,2 @@
+﻿model,threshold_type,threshold,accuracy,precision,recall,f1,roc_auc,tn,fp,fn,tp
+Moderate Random Forest,기본 임계값,0.5,0.8663180533884367,0.8670467798367241,0.757328805885682,0.8084823586273562,0.941980094962895,13852,1026,2144,6691
